@@ -1,4 +1,6 @@
+from openai import OpenAI
 import os
+import json
 import logging
 from telegram import Update
 from telegram.ext import (
@@ -10,6 +12,50 @@ from telegram.ext import (
 )
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+SYSTEM_PROMPT = """
+너는 개인비서용 태스크 파서다.
+
+사용자의 입력을 분석해서
+아래 JSON 형식으로만 응답해라.
+
+필드:
+- intent: register_task | chat
+- task_name: string | null
+- frequency: once | daily | every_n_days | weekly | null
+- interval: number | null
+- check_times: ["morning", "afternoon", "evening"] | null
+
+설명은 절대 하지 마라.
+JSON만 출력해라.
+"""
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_text = update.message.text
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_text},
+        ],
+    )
+
+    raw = response.choices[0].message.content
+
+    try:
+        parsed = json.loads(raw)
+        reply = (
+            f"🧠 이렇게 이해했어:\n"
+            f"{json.dumps(parsed, ensure_ascii=False, indent=2)}"
+        )
+    except json.JSONDecodeError:
+        reply = "음… 아직 잘 이해 못 했어 😅 다시 말해줄래?"
+
+    await update.message.reply_text(reply)
+
+
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN 환경변수가 설정되지 않았습니다.")
